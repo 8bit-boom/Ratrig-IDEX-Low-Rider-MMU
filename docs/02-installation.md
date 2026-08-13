@@ -38,20 +38,30 @@ cd Happy-Hare
 ./install.sh
 ```
 
-The installer is interactive. Answer:
+The installer is interactive. Per GcodeGearhead's official build guide, answer:
 
-- **MCU**: whichever board actually drives your MMU's 4 gate steppers (see
-  `docs/01-hardware-overview.md` — this is *not* necessarily the printer's main
-  board).
-- **Vendor**: `Other`
-- **Num gates**: `4`
-- **Selector type**: `VirtualSelector` (no physical selector — the Low Rider MMU
-  uses one gear stepper per gate instead)
-- **Toolhead extruder**: point it at `extruder1` (the RatOS **right** toolhead).
-  If the installer doesn't ask this directly, it's set explicitly in
-  `config/happy-hare/mmu_parameters_lowrider.cfg` (`extruder: extruder1`) — make
-  sure that override file is included **after** Happy Hare's own generated
-  `mmu_parameters.cfg` so it wins.
+- **What Type of MMU**: `MMX` (option 13 as of the guide's Happy Hare version —
+  option numbers drift between releases, match the *name* MMX, not the number)
+- **How Many Gates**: `4` (the guide's own reference build used 6; use however
+  many lanes you actually built)
+- **Select MCU Board Type**: `BTT EBB 42 CANbus v1.2` (option 12) — flash Klipper
+  to it first (Katapult recommended: github.com/Arksine/katapult), then keep
+  answering "no" during the installer's board-detection prompts until it finds
+  that board's serial/CAN UUID.
+- **Neo pixels**: yes (6x WS2812 GRBW on the MMU, one per gate)
+- **Which Servo**: `MG996r` (option 1)
+- **Endless spool**: your choice
+- **Include MMU config files**: yes
+  - Mini screen: no, unless you have one
+  - Default pause/resume: yes
+  - ERCF filament cutter: no, unless you added the optional toolhead cutter
+  - Blobifier: no, unless you're using that separate purge-bucket addon
+
+**Toolhead extruder**: the installer's own prompts don't cover IDEX, so this is
+set explicitly by this repo in `config/happy-hare/mmu_parameters_lowrider.cfg`
+(`extruder: extruder1`, the RatOS **right** toolhead) — make sure that override
+file is included **after** Happy Hare's own generated `mmu_parameters.cfg` so it
+wins.
 
 This generates `~/printer_data/config/mmu/` with `mmu.cfg`, `mmu_hardware.cfg`,
 `mmu_parameters.cfg`, `mmu_macro_vars.cfg`, etc., and adds
@@ -71,6 +81,7 @@ named `T2`-`T5`. Repeat this check after any future Happy Hare update that touch
 Copy this repo's files onto the generated tree:
 
 ```
+config/happy-hare/mmu_pins_lowrider.cfg        -> ~/printer_data/config/mmu/mmu_pins_lowrider.cfg
 config/happy-hare/mmu_parameters_lowrider.cfg  -> ~/printer_data/config/mmu/mmu_parameters_lowrider.cfg
 config/happy-hare/mmu_hardware_lowrider.cfg    -> ~/printer_data/config/mmu/mmu_hardware_lowrider.cfg
 config/macros/idex_mmu_integration.cfg         -> ~/printer_data/config/RatOS/idex_mmu_integration.cfg
@@ -79,8 +90,11 @@ config/macros/idex_mmu_integration.cfg         -> ~/printer_data/config/RatOS/id
 (Any destination path is fine as long as the `[include ...]` lines in
 `config/printer-overrides.cfg` are updated to match.)
 
-Fill in every `<FILL_IN: ...>` placeholder in `mmu_hardware_lowrider.cfg` against
-your actual wiring (see `docs/01-hardware-overview.md`).
+Fill in every `<FILL_IN: ...>` placeholder in `mmu_hardware_lowrider.cfg` and
+`mmu_parameters_lowrider.cfg` against your actual wiring/geometry — most of these
+are things the build guide itself says must be measured per-machine (gear current,
+gate homing distances, servo angles, toolhead dimensions), not generic values (see
+`docs/01-hardware-overview.md` and `docs/05-calibration.md`).
 
 ## 5. Wire up printer.cfg and moonraker.conf
 

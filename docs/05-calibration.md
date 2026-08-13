@@ -21,33 +21,55 @@ until the current stage behaves correctly.
    right toolhead itself okay" from "is the MMU path okay"). Confirm both toolheads
    individually print clean before wiring the MMU into the mix.
 
-## Stage 2 — MMU hardware, standalone (Happy Hare's own calibration flow)
+## Stage 2 — MMU hardware, standalone (the build guide's own calibration flow)
 
-With the printer otherwise idle (no active print):
+With the printer otherwise idle (no active print), and the right carriage parked
+at rest — you don't need `T2`-`T5` (our wrapped macros) for pure MMU-side
+calibration; use Happy Hare's raw `MMU_...` commands directly so you're not also
+exercising the IDEX carriage logic at the same time.
 
-1. `MMU_STATUS` — confirms Happy Hare loaded cleanly with your `mmu_hardware_lowrider.cfg`
-   pins.
-2. Per-gate gear rotation distance calibration
-   (`MMU_CALIBRATE_GEAR GATE=0` .. `GATE=3`, or the Type-B bulk flow — see Happy
-   Hare's wiki page **MMU Calibration TypeB**, which covers exactly this
-   individual-drive-stepper-per-gate class of MMU that the Low Rider MMU belongs
-   to).
-3. Bowden length calibration (`MMU_CALIBRATE_BOWDEN`) — from the gate merge point
-   to the right toolhead's extruder entrance.
-4. Gate/sensor sanity: manually feed filament into each gate and confirm the
-   pre-gate sensor(s) and gate/exit sensor (if fitted) report correctly in
-   `MMU_STATUS` / the Mainsail MMU panel.
-5. Toolhead sensor calibration on the right toolhead (`MMU_CALIBRATE_TOOLHEAD` or
-   equivalent for your Happy Hare version) — needed for reliable load/unload
-   endpoint detection.
-6. Run `MMU_TEST_LOAD`/`MMU_TEST_UNLOAD` (or your Happy Hare version's equivalent
-   test commands) gate by gate, watching the physical filament path the whole way,
-   before trusting it during an unattended print.
+This is a **Type-A, servo-selector** MMU (one shared gear stepper, one CAM
+selector), so its calibration flow is the ERCF-style **MMU Calibration TypeA**
+procedure, not the per-gate Type-B one. Follow it in this order — it's the exact
+sequence from GcodeGearhead's build guide:
 
-Do all of this with the printer's **right carriage parked at rest** — you don't
-need `T0`-`T3` (our wrapped macros) for pure MMU-side calibration; use Happy Hare's
-raw `MMU_...` commands directly so you're not also exercising the IDEX carriage
-logic at the same time.
+1. `MMU_STATUS` — confirms Happy Hare loaded cleanly with your
+   `mmu_pins_lowrider.cfg` / `mmu_hardware_lowrider.cfg`.
+2. **Servo/CAM angle calibration** — do this before anything else, the gear
+   calibration below depends on the selector actually landing on the right gate:
+   - `SET_SERVO servo=selector_servo angle=0` and physically check gate 0's CAM
+     ear points straight down and grips the filament channel. If not, pull the
+     5mm rod to disengage the CAM from the belt, rotate it into position, and
+     reassemble (see the build guide's Final Assembly section/photos).
+   - For each gate, `MMU_SELECT GATE=<n>` then `SET_SERVO servo=selector_servo
+     angle=<n>` sweeping through candidate angles (the guide's own starting point
+     for a 4-gate build was `26, 58, 90, 118` for gates 0-3) until each gate's
+     CAM ear sits fully down. Nudge angles individually if any gate is slightly
+     off.
+   - Write the final, confirmed angles into `selector_gate_angles` in
+     `mmu_parameters_lowrider.cfg`.
+   - If you get `"Operation not possible. MMU has filament loaded"` here, you
+     forgot to comment out `gate_switch_pin` in `mmu_hardware_lowrider.cfg` (this
+     MMU doesn't have that sensor — see `docs/01-hardware-overview.md`).
+3. **Gear rotation distance** — since there's only one shared gear, you calibrate
+   it once and it applies to every gate:
+   - Feed a piece of filament (>200mm) into gate 0 until it just protrudes past
+     the ECAS fitting; mark it with a pencil.
+   - `MMU_SELECT GATE=0`, then `MMU_TEST_MOVE MOVE=100`, then measure the actual
+     length fed and run `MMU_CALIBRATE_GEAR MEASURED=<your measurement>`.
+   - Repeat `MMU_SELECT GATE=1` → `MMU_CALIBRATE_GEAR MEASURED=<same
+     measurement>`, and so on for every gate you built — you're not
+     recalibrating the gear each time, just confirming the same shared stepper
+     performs consistently once the servo has switched gates.
+4. **Load/unload sanity**: feed filament by hand into each gate's pre-gate
+   sensor; it should trigger MMU auto-load, drive the filament all the way to
+   the right toolhead's extruder sensor, then retract and park just before it.
+   Watch the whole physical path before trusting it unattended.
+5. **Toolhead sensor calibration** — `MMU_CALIBRATE_TOOLHEAD` (requires the
+   toolhead sensor from `docs/01-hardware-overview.md`), used to derive
+   `toolhead_extruder_to_nozzle` / `toolhead_sensor_to_nozzle`.
+
+Reference: `https://github.com/moggieuk/Happy-Hare/wiki/MMU-Calibration-TypeA`.
 
 ## Stage 3 — Combined
 

@@ -1,5 +1,11 @@
 # Hardware overview & wiring assumptions
 
+This doc was rewritten against GcodeGearhead's official **Low Rider MMU V2.0 Build
+Guide** (PDF, supplied directly by the user — printables.com itself was unreachable
+from this environment, but the guide gave everything needed). Anything below
+credited to "the build guide" is a real value/photo from that document, not a
+guess.
+
 ## Printer side (RatRig V-Core 4.1 IDEX)
 
 RatOS's `V-Core 4.1 IDEX` printer profile (`Rat-OS/RatOS-configuration`, printer
@@ -14,76 +20,93 @@ folder `printers/v-core-4-1-idex`) gives you, out of the box:
 - `T0` / `T1` G-code macros that call the internal `_SELECT_TOOL` macro to park the
   inactive carriage and activate the requested one
 
-**This repo's assumption:** the Low Rider MMU's Bowden output feeds **only the
-right toolhead (carriage 1 / `extruder1`)**. The left toolhead (carriage 0 /
-`extruder`) is wired and configured exactly as a stock RatOS IDEX toolhead — nothing
-in this repo touches its hardware config.
+**This repo's assumption:** the Low Rider MMU's output feeds **only the right
+toolhead (carriage 1 / `extruder1`)**. The left toolhead (carriage 0 / `extruder`)
+is wired and configured exactly as a stock RatOS IDEX toolhead — nothing in this
+repo touches its hardware config.
 
-If your build feeds the MMU into the *left* toolhead instead, swap `extruder1`/
-`CARRIAGE=1` for `extruder`/`CARRIAGE=0` throughout `config/happy-hare/` and
-`config/macros/idex_mmu_integration.cfg`.
+## MMU side (Low Rider MMU v2.0) — corrected mechanism
 
-## MMU side (Low Rider MMU v2.0)
+**Correction from an earlier version of this doc:** the Low Rider MMU is a
+**Type-A** MMU in Happy Hare's terminology, not Type-B. The build guide states
+this explicitly: *"The Low Rider MMU is a TYPE A MMU, this means there are:
+Pregate sensors, A single drive gear, A single servo controlled selector."*
 
-The Low Rider MMU v2.0 is a **Type-B** design in Happy Hare's terminology: each gate
-has its own **independent gear/drive stepper** (a "dual-gear" pinch-and-drive pair
-per the vendor's own description) that grips and always holds the filament — there
-is no moving **selector** stage to home or align, unlike ERCF/Tradrack-style
-(Type-A) units. That is the whole point of the design ("less moving parts to align
-and tinker with").
+That means, unlike ERCF/Tradrack's linear selector, or Box Turtle/3MS's one
+stepper per gate:
 
-This repo therefore configures Happy Hare with:
+- **One NEMA17 stepper** drives filament for whichever gate is currently
+  selected (shared across all gates, via an 80T gear + GT2 belt train).
+- **One MG996R servo** rotates a CAM shaft that mechanically presses the selected
+  gate's lever/BMG gear into that shared drive train — this is the "selector."
+  Happy Hare's config name for it is `selector_type: ServoSelector`.
+- **Six pre-gate limit switches** (D2FC NO+NC), one per lane, detect filament
+  entering each gate and drive gate autoload.
+- **No filament encoder, and no shared gate sensor.** The build guide is explicit:
+  *"In this version of the MMU we do not run a gate sensor as we load filament up
+  to the extruder sensor and then park it just before."* Gate parking/homing is
+  done using the **extruder entry sensor on the toolhead**
+  (`gate_homing_endstop: extruder`), not a sensor local to the MMU.
+- **Six WS2812 (Neo Pixel GRBW) LEDs**, one per gate, daisy-chained.
 
-```
-mmu_vendor: Other
-mmu_version: 1.0
-selector_type: VirtualSelector      # no physical selector — matches BoxTurtle/3MS/NightOwl class
-filament_always_gripped: 1          # gear steppers pinch filament continuously
-```
+This repo's Happy Hare config (`config/happy-hare/`) now reflects this: one
+`[stepper_mmu_gear]`, one `[mmu_servo selector_servo]`, no
+`stepper_mmu_gear_1/2/3` and no `[mmu_encoder]`.
 
-### What we could not verify
+## Electronics — real BOM from the build guide
 
-`printables.com` and the reseller pages for this MMU are on a network egress
-blocklist in this environment, so the following are **left as placeholders you must
-fill in from your own BOM / board pinout**, not real numbers:
+- **Controller: a single BTT EBB42 v1.2 CAN toolboard** (no Max31865), mounted on
+  the MMU itself and connected to the printer's CAN bus — not a separate/dedicated
+  MCU, and not one-per-gate. Flash Klipper to it (Katapult recommended) before
+  running the Happy Hare installer.
+- **LM2596 buck converter**, stepping the 24V MMU supply (fed *separately* from
+  the printer PSU, not off the toolboard's own input) down to 5.1V for the
+  pre-gate switch logic level.
+- Servo (MG996R) and gear stepper (NEMA17) run directly off the EBB42.
+- The build guide's own wiring diagram gives this exact pin-out for their
+  reference build (verify against your own soldering if you deviated):
 
-- Exact MCU/board driving the MMU (commonly an SKR Pico, an EBB-style CAN toolboard,
-  or the printer's spare motherboard headers — Happy Hare supports any of these as
-  a Klipper `[mcu]`)
-- Which stepper driver channels the 4 gate motors are wired to
-- Whether your build includes a **filament encoder** (many low-part-count Type-B
-  designs skip it and rely on gate sensors + collision/stallguard homing instead —
-  this repo defaults to **no encoder**; uncomment the encoder block in
-  `mmu_hardware_lowrider.cfg` if yours has one)
-- Whether you have per-gate **pre-gate sensors** (recommended, and assumed present
-  below) and/or a single shared **gate/exit sensor** at the point the 4 channels
-  merge into the shared Bowden tube
-- Bowden tube length from the MMU's merge point to the right toolhead's extruder
-  entrance, and whether all 4 gates share the same length to that merge point
-  (`variable_bowden_lengths: 0` assumes yes — flip to `1` if your gates have visibly
-  different path lengths)
+  | Signal | EBB42 pin |
+  |---|---|
+  | Gear stepper UART | PA15 |
+  | Gear stepper STEP | PD0 |
+  | Gear stepper DIR | PD1 |
+  | Gear stepper ENABLE | PD2 |
+  | Selector servo signal | PA3 |
+  | Neopixel data | PD3 |
+  | Pre-gate switch, gate 0 | PB6 |
+  | Pre-gate switch, gate 1 | PB5 |
+  | Pre-gate switch, gate 2 | PB7 |
+  | Pre-gate switch, gate 3 | PB8 |
+  | Pre-gate switch, gate 4 | PB9 |
+  | Pre-gate switch, gate 5 | PB4 |
 
-### Assumed sensor layout (edit if yours differs)
+  For a **4-gate build** (this repo's default, per your earlier answer) you only
+  need gates 0-3 → `PB6, PB5, PB7, PB8`. Leave `PB9`/`PB4` unused.
 
-```
-gate 0..3   pre-gate switch sensor   -> detects filament loaded into each gate
-(merge)     shared gate sensor        -> optional, detects filament past the merge point
-right toolhead   toolhead sensor      -> at/near the extruder entrance of the right toolhead,
-                                          used for homing + runout + calibration reference
-```
+- Gear stepper current: build guide's own guidance — **run current = 0.85 x the
+  motor's rated current, capped at 1A** (the EBB42's driver limit).
 
-Fill in the actual pins for these in `config/happy-hare/mmu_hardware_lowrider.cfg`
-— every placeholder is written as `<FILL_IN: description>` with a comment on what
-to look for (motherboard silkscreen label, toolboard connector name, etc.).
+## What's still genuinely build-specific (not guessable)
 
-## Toolboard note
-
-Because the MMU-fed side is the *right* toolhead, its extruder stepper current,
-rotation_distance, and any `sync_feedback_tension_pin`/`sync_feedback_compression_pin`
-(if your MMU has a buffer/spring arm) belong on **that** toolhead's MCU, not the
-MMU's own MCU. Keep the MMU's own MCU strictly for the 4 gate steppers + MMU-local
-sensors; everything downstream of the merge point (toolhead sensor, extruder sync)
-lives on the printer's main or toolboard MCU, per Happy Hare's own convention (see
-the comment block at the top of `mmu.cfg` upstream: *"certain sensors (toolhead,
-extruder, sync-feedback) are typically on the printer's main MCU and should be
-configured separately"*).
+- **Extruder entry sensor / toolhead sensor pins** — these live on the **right
+  toolhead's own board** (its EBB42, per RatOS's stock IDEX BOM), not the MMU's
+  board. The build guide's own example uses their personal toolboard alias
+  (`XOL:PB8` / `XOL:PB9`) which only makes sense for their machine. You must
+  substitute your right toolhead's actual sensor pin names (or aliases) here —
+  see `mmu_hardware_lowrider.cfg`.
+- **Servo gate angles.** The guide gives a starting point
+  (`26,58,90,118,147,180` for their 6-gate reference build) but is explicit that
+  these must be tuned per-machine (assembly tolerances, and there were two CAM
+  generations with different belt lengths — 144mm vs 146mm). Calibrate with
+  `SET_SERVO`/`MMU_SELECT` per `docs/05-calibration.md`; don't trust the numbers
+  as-is.
+- **`gate_homing_max` / `gate_parking_distance`.** The example build's values
+  (1310mm / 1200mm) reflect *their* tube routing distance from gate to toolhead
+  sensor, which depends entirely on where you physically mount the MMU relative
+  to the right toolhead. Measure your own.
+- **Filament cutter.** The build guide's author has an optional toolhead-mounted
+  filament cutter and configures `form_tip_macro: _MMU_CUT_TIP` with
+  machine-specific cutter coordinates. The Low Rider MMU's core BOM does not
+  require a cutter — if you don't have one, use Happy Hare's default
+  `_MMU_FORM_TIP` instead and ignore the cutter-specific settings.
