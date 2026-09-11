@@ -64,6 +64,7 @@ docs/
   03-integration-architecture.md The T2-T5 tool-numbering scheme and why it's needed (read this first)
   04-slicer-setup.md             OrcaSlicer setup: verified G-code hooks + the IDEX topology adaptation
   05-calibration.md              Calibration order: IDEX, then MMU (Type-A flow), then combined
+  06-fine-nozzle-0.2mm-setup.md  Running a 0.2mm nozzle: hardware fit, RatOS config, slicer settings
 config/
   printer-overrides.cfg          Goes into printer.cfg, below [include RatOS.cfg]
   happy-hare/
@@ -96,6 +97,14 @@ config/
    to `moonraker.conf`.
 6. `RESTART`, then follow [`docs/05-calibration.md`](docs/05-calibration.md) in order.
 7. Configure your slicer per [`docs/04-slicer-setup.md`](docs/04-slicer-setup.md).
+
+## Extras
+
+- **Want a 0.2mm nozzle?** RatRig only officially lists 0.4/0.6/0.8mm, but that's
+  a BOM/profile statement, not a firmware limit — see
+  [`docs/06-fine-nozzle-0.2mm-setup.md`](docs/06-fine-nozzle-0.2mm-setup.md) for
+  what actually fits your hotend (HF vs UHF matters), the RatOS/Klipper config
+  changes, and slicer tuning.
 
 ## Provenance
 
